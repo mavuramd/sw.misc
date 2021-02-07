@@ -15,11 +15,11 @@ http:
   server_port: 8321
 
 sensor:
-  - platform: command_line
-    name: RPI CPU Temp
-    command: "cat /sys/class/thermal/thermal_zone0/temp"
-    unit_of_measurement: "°C"
-    value_template: '{{ value | multiply(0.001) | round(2) }}'
+    #platform: command_line
+    #name: RPI CPU Temp
+    #command: "cat /sys/class/thermal/thermal_zone0/temp"
+    #unit_of_measurement: "°C"
+    #value_template: '{{ value | multiply(0.001) | round(2) }}'
 
   - platform: bme280
     name: Ambience
@@ -39,15 +39,12 @@ sensor:
 homekit:
   filter:
     include_entities:
-      - sensor.RPI_CPU_Temp
       - binary_sensor.main_door_sensor
       - light.living_room
       - light.tv_room
       - sensor.ambience_humidity
       - sensor.ambience_temperature
   entity_config:
-    sensor.RPI_CPU_Temp:
-      name: RPI CPU Temp
     binary_sensor.main_door_sensor:
       name: Main Door
     light.living_room:
@@ -69,23 +66,31 @@ mqtt:
 device_tracker:
   - platform: fritz
     host: 192.168.178.1
-    username: ********
+    username: *********
     password: *********
     interval_seconds: 12
-    consider_home: 180
+    consider_home: 120
     new_device_defaults:
       track_new_devices: false
 
 telegram_bot:
   - platform: polling
-    api_key: **************************
+    api_key: **********************************
     allowed_chat_ids:
-      - ********
+      - *********************
 
 notify:
   - platform: telegram
     name: mavuram_telegram
-    chat_id: ********
+    chat_id: ****************
+
+camera:
+  - platform: ffmpeg
+    name: Living Room
+    input: *************************
+  - platform: ffmpeg
+    name: Whole View
+    input: *************************
 
 #alert:
 #  main_door_alert:
@@ -102,8 +107,7 @@ automation:
   - alias: Low Ambience temperature alert
     trigger:
       platform: numeric_state
-      entity_id: sensor.ambience_temperature  
-      #value_template: "{{ states.sensor.ambience_temperature.state }}"
+      entity_id: sensor.ambience_temperature
       below: 18
       for: "00:10:00"
     action:
@@ -124,22 +128,53 @@ automation:
     action:
       - service: notify.mavuram_telegram
         data:
-          message: "Main Door is opened"
+          message: "Main Door is opened at {{ now().strftime('%H:%M') }}"
+      - service: light.turn_on
+        entity_id: light.living_room
+        data:
+          brightness: 255
+          transition: 1
     mode: single
 
-  - alias: Turn off TV when no one at home
+  - alias: Turn off TV when Dilip not at home
     trigger:
-      platform: state
-      entity_id: binary_sensor.dilipresiphonex
-      to: 'not_home'
+      - platform: state
+        entity_id: device_tracker.dilipresiphonex
+        to: 'not_home'
+      - platform: state
+        entity_id: device_tracker.dilipreplewatch
+        to: 'not_home'
     condition:
-      - condition: state
-        entity_id: 'device_tracker.dilipreplewatch'
-        state: 'not_home'
+      condition: and
+      conditions:
+        - condition: state
+          entity_id: device_tracker.dilipreplewatch
+          state: 'not_home'
+        - condition: state
+          entity_id: device_tracker.dilipresiphonex
+          state: 'not_home'
+        - condition: state
+          entity_id: light.tv_room
+          state: 'on'
     action:
       - service: notify.mavuram_telegram
         data:
-          message: "TV Turned off"
+          message: "TV Turned off as Dilip is not home"
       - service: light.turn_off
-        entity_id: light.tv_room
+        data:
+          entity_id: 
+            - light.tv_room
+
+  - alias: Transition lights during sunset
+    trigger:
+      - platform: sun
+        event: sunset
+        offset: "-00:15:00"
+    action:
+      - service: light.turn_on
+        entity_id: light.living_room
+        data:
+          brightness: 127
+          # 900 seconds = 15 minutes
+          transition: 900
     mode: single
